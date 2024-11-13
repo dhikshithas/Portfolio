@@ -1,0 +1,285 @@
+Program:
+
+server.py:
+# Server Code
+import socket
+import threading
+
+# Server Constants
+TCP_HOST = '127.0.0.1'
+TCP_PORT = 12345
+UDP_PORT = 12346
+
+clients = []
+
+# TCP Connection Handler
+def handle_tcp_client(conn, addr):
+    print(f"Connected to {addr}")
+    while True:
+        try:
+            message = conn.recv(1024).decode('utf-8')
+            if message:
+                print(f"Message from {addr}: {message}")
+                broadcast_tcp(message, conn)
+        except:
+            conn.close()
+            clients.remove(conn)
+            break
+
+# Broadcast TCP Messages to All Clients
+def broadcast_tcp(message, connection):
+    for client in clients:
+        if client != connection:
+            try:
+                client.send(message.encode('utf-8'))
+            except:
+                client.close()
+                clients.remove(client)
+
+# UDP Server for Real-time Updates
+def udp_server():
+    udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    udp_socket.bind((TCP_HOST, UDP_PORT))
+    print("UDP server running...")
+    while True:
+        data, addr = udp_socket.recvfrom(1024)
+        print(f"Real-time update from {addr}: {data.decode('utf-8')}")
+
+# Main Server Code
+def tcp_server():
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_socket.bind((TCP_HOST, TCP_PORT))
+    server_socket.listen()
+    print("TCP server running...")
+   
+    # Start UDP Server
+    udp_thread = threading.Thread(target=udp_server)
+    udp_thread.start()
+   
+    while True:
+        conn, addr = server_socket.accept()
+        clients.append(conn)
+        threading.Thread(target=handle_tcp_client, args=(conn, addr)).start()
+
+# Start the Server
+tcp_server()
+
+client.py:
+
+# Server Code
+import socket
+import threading
+
+# Server Constants
+TCP_HOST = '127.0.0.1'
+TCP_PORT = 12345
+UDP_PORT = 12346
+
+clients = []
+
+# TCP Connection Handler
+def handle_tcp_client(conn, addr):
+    print(f"Connected to {addr}")
+    while True:
+        try:
+            message = conn.recv(1024).decode('utf-8')
+            if message:
+                print(f"Message from {addr}: {message}")
+                broadcast_tcp(message, conn)
+        except:
+            conn.close()
+            clients.remove(conn)
+            break
+
+# Broadcast TCP Messages to All Clients
+def broadcast_tcp(message, connection):
+    for client in clients:
+        if client != connection:
+            try:
+                client.send(message.encode('utf-8'))
+            except:
+                client.close()
+                clients.remove(client)
+
+# UDP Server for Real-time Updates
+def udp_server():
+    udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    udp_socket.bind((TCP_HOST, UDP_PORT))
+    print("UDP server running...")
+    while True:
+        data, addr = udp_socket.recvfrom(1024)
+        print(f"Real-time update from {addr}: {data.decode('utf-8')}")
+
+# Main Server Code
+def tcp_server():
+    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_socket.bind((TCP_HOST, TCP_PORT))
+    server_socket.listen()
+    print("TCP server running...")
+   
+    # Start UDP Server
+    udp_thread = threading.Thread(target=udp_server)
+    udp_thread.start()
+   
+    while True:
+        conn, addr = server_socket.accept()
+        clients.append(conn)
+        threading.Thread(target=handle_tcp_client, args=(conn, addr)).start()
+
+# Start the Server
+tcp_server()
+--------------------------
+DISTANCE VECTOR ROUTING ALGORITHM
+#include <stdio.h>
+#include <limits.h>
+#define N 10 // Max number of nodes
+void distance_vector(int cost[N][N], int nodes) {
+    int distance[N][N], i, j, k;
+    for (i = 0; i < nodes; i++) {
+        for (j = 0; j < nodes; j++) {
+            distance[i][j] = cost[i][j];
+        }
+    }
+ for (k = 0; k < nodes; k++) {
+        for (i = 0; i < nodes; i++) {
+            for (j = 0; j < nodes; j++) {
+                if (distance[i][j] > distance[i][k] + distance[k][j])
+                    distance[i][j] = distance[i][k] + distance[k][j];
+            }
+        }
+    }
+  printf("\nDistance Vector Routing Table:\n");
+    for (i = 0; i < nodes; i++) {
+        printf("Router %d: ", i);
+        for (j = 0; j < nodes; j++) {
+            if (distance[i][j] == INT_MAX)
+                printf("INF ");
+            else
+                printf("%d ", distance[i][j]);
+        }
+        printf("\n");
+    }
+}
+int main() {
+    int cost[N][N], nodes, i, j;
+   printf("Enter the number of nodes: ");
+    scanf("%d", &nodes);
+
+    printf("Enter the cost matrix (enter 9999 for infinity):\n");
+    for (i = 0; i < nodes; i++) {
+        for (j = 0; j < nodes; j++) {
+            scanf("%d", &cost[i][j]);
+            if (i == j)
+                cost[i][j] = 0;
+            if (cost[i][j] == 9999)
+                cost[i][j] = INT_MAX;
+        }
+    }
+distance_vector(cost, nodes);
+ return 0;
+}
+
+
+OUTPUT:
+
+5
+
+0 2 9999 1 9999
+2 0 3 9999 9999
+9999 3 0 1 5
+1 9999 1 0 9999
+9999 9999 5 9999 0
+
+Distance Vector Routing Table:
+Router 0: 0 2 3 1 8 
+Router 1: 2 0 3 3 8 
+Router 2: 3 3 0 1 5 
+Router 3: 1 3 1 0 6 
+Router 4: 8 8 5 6 0
+
+
+
+LINK STATE ROUTING ALGORITHM
+#include <stdio.h>
+#include <stdbool.h>
+#include <limits.h>
+#define N 10 // Max number of nodes
+int find_min_distance(int dist[], bool visited[], int nodes) {
+    int min = INT_MAX, min_index;
+      for (int v = 0; v < nodes; v++) {
+        if (visited[v] == false && dist[v] <= min) {
+            min = dist[v];
+            min_index = v;
+        }
+    }
+    
+    return min_index;
+}
+void link_state(int graph[N][N], int src, int nodes) {
+    int dist[N]; 
+    bool visited[N]; 
+   for (int i = 0; i < nodes; i++) {
+        dist[i] = INT_MAX;
+        visited[i] = false;
+    }
+   dist[src] = 0;
+   for (int count = 0; count < nodes - 1; count++) {
+        int u = find_min_distance(dist, visited, nodes);
+        visited[u] = true;
+
+        for (int v = 0; v < nodes; v++) {
+            if (!visited[v] && graph[u][v] && dist[u] != INT_MAX && dist[u] + graph[u][v] < dist[v]) {
+                dist[v] = dist[u] + graph[u][v];
+            }
+        }
+    }
+
+    printf("\nLink State Routing Table for Node %d:\n", src);
+    for (int i = 0; i < nodes; i++) {
+        if (dist[i] == INT_MAX)
+            printf("Node %d: INF\n", i);
+        else
+            printf("Node %d: %d\n", i, dist[i]);
+    }
+}
+int main() {
+    int graph[N][N], nodes, i, j, src;
+
+    printf("Enter the number of nodes: ");
+    scanf("%d", &nodes);
+
+    printf("Enter the graph matrix (enter 9999 for infinity):\n");
+    for (i = 0; i < nodes; i++) {
+        for (j = 0; j < nodes; j++) {
+            scanf("%d", &graph[i][j]);
+            if (i == j)
+                graph[i][j] = 0;
+            if (graph[i][j] == 9999)
+                graph[i][j] = INT_MAX;
+        }
+    }
+
+    printf("Enter the source node: ");
+    scanf("%d", &src);
+
+    link_state(graph, src, nodes);
+
+    return 0;
+}
+
+OUTPUT:
+
+5
+
+0 2 9999 1 9999
+2 0 3 9999 9999
+9999 3 0 1 5
+1 9999 1 0 9999
+9999 9999 5 9999 0
+
+Link State Routing Table for Node 0:
+Node 0: 0
+Node 1: 2
+Node 2: 3
+Node 3: 1
+Node 4: 8
