@@ -1,569 +1,288 @@
-#include<stdio.h>  
-#include<string.h>  
-#include<iostream>
-#include<vector>
-#include<string>
-#include<algorithm>
-#define N strlen(gen_poly)  
-Using namespace std;
-char data[28];  
-char check_value[28];  
-char gen_poly[10];  
-int data_length,i,j;   
+npm init -y
+npm install express mongoose bcryptjs jsonwebtoken dotenv body-parser
+npm install --save-dev nodemon
+node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
 
-void XOR() {  
-    for(j = 1; j < N; j++)  
-        check_value[j] = (( check_value[j] == gen_poly[j]) ? '0' : '1');  
+node app.js
+
+blog-platform/
+├── models/
+│   ├── user.js
+│   ├── blog.js
+├── routes/
+│   ├── auth.js
+│   ├── blog.js
+├── .env
+├── app.js
+└── package.json
+
+PORT=5000
+MONGO_URI=mongodb://localhost:27017/blog-platform
+JWT_SECRET=mysecretkey
+
+user.js
+const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
+
+const userSchema = new mongoose.Schema(
+  {
+    username: { type: String, required: true, unique: true },
+    email:    { type: String, required: true, unique: true },
+    password: { type: String, required: true },
+  },
+  { timestamps: true }
+);
+
+// Hash the password before saving
+userSchema.pre('save', async function (next) {
+  if (!this.isModified('password')) return next();
+  try {
+    const salt    = await bcrypt.genSalt(10);
+    this.password = await bcrypt.hash(this.password, salt);
+    next();
+  } catch (err) {
+    next(err);
+  }
+});
+
+module.exports = mongoose.model('User', userSchema);
+
+--------
+
+const mongoose = require('mongoose');
+
+const blogSchema = new mongoose.Schema(
+  {
+    title:   { type: String, required: true },
+    content: { type: String, required: true },
+    author:  { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  },
+  { timestamps: true }
+);
+
+module.exports = mongoose.model('Blog', blogSchema);
+-----------------
+
+const express = require('express');
+const User    = require('../models/user');
+const bcrypt  = require('bcryptjs');
+const jwt     = require('jsonwebtoken');
+const router  = express.Router();
+
+// Register a new user
+router.post('/register', async (req, res) => {
+  const { username, email, password } = req.body;
+  try {
+    // Check if user already exists
+    let user = await User.findOne({ email });
+    if (user) return res.status(400).json({ error: 'User already exists' });
+
+    user = new User({ username, email, password });
+    await user.save();
+    res.status(201).json({ message: 'User registered successfully' });
+  } catch (error) {
+    console.error(error.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Login and get a token
+router.post('/login', async (req, res) => {
+  const { email, password } = req.body;
+  try {
+    // Check if user exists
+    const user = await User.findOne({ email });
+    if (!user) return res.status(400).json({ error: 'Invalid credentials' });
+
+    // Validate password
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) return res.status(400).json({ error: 'Invalid credentials' });
+
+    // Generate JWT token
+    const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, {
+      expiresIn: '1h',
+    });
+    res.status(200).json({ token });
+  } catch (error) {
+    console.error(error.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+module.exports = router;
+
+-----------
+const express = require('express');
+const Blog    = require('../models/blog');
+const jwt     = require('jsonwebtoken');
+const router  = express.Router();
+
+// Middleware to authenticate JWT token
+function authenticateToken(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  const token      = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+  if (!token) return res.status(401).json({ error: 'Access denied, token missing!' });
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user      = decoded;
+    next();
+  } catch (err) {
+    res.status(400).json({ error: 'Invalid token' });
+  }
 }
 
-void receiver(char* data) {  
-    printf("Data received: %s\n", data); 
-    crc();   
-    printf("Reminder: %s\n", check_value);
-    for(i = 0; (i < N-1) && (check_value[i] != '1'); i++);  
-    if(i < N-1)  
-        printf("\nError detected\n\n");  
-    else  
-        printf("\nNo error detected\n\n");  
-}
+// Create a new blog post
+router.post('/create', authenticateToken, async (req, res) => {
+  const { title, content } = req.body;
+  try {
+    const blog = new Blog({
+      title,
+      content,
+      author: req.user.userId,
+    });
+    await blog.save();
+    res.status(201).json({ message: 'Blog post created', blog });
+  } catch (error) {
+    console.error(error.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
 
-int crc() {  
-    for(i = 0; i < N; i++)  
-        check_value[i] = data[i];  
-    do {  
-        if(check_value[0] == '1')  
-            XOR();  
-        for(j = 0; j < N-1; j++)  
-            check_value[j] = check_value[j+1];  
-        check_value[j] = data[i++];  
-    } while(i <= data_length+N-1);  
-}
+// Get all blog posts
+router.get('/', async (req, res) => {
+  try {
+    const blogs = await Blog.find().populate('author', 'username');
+    res.status(200).json(blogs);
+  } catch (error) {
+    console.error(error.message);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
 
-std::string binaryAddition(const std::string& a, const std::string& b) {
-    std::string result;
-    int carry = 0;
-    int length = std::max(a.length(), b.length());
+module.exports = router;
 
-    std::string paddedA = std::string(length - a.length(), '0') + a;
-    std::string paddedB = std::string(length - b.length(), '0') + b;
+----------------------------
+const express    = require('express');
+const mongoose   = require('mongoose');
+const dotenv     = require('dotenv');
+const bodyParser = require('body-parser');
+const authRoutes = require('./routes/auth');
+const blogRoutes = require('./routes/blog');
 
-    for (int i = length - 1; i >= 0; i--) {
-        int bitA = paddedA[i] - '0';
-        int bitB = paddedB[i] - '0';
-        int sum = bitA + bitB + carry;
-        result += (sum % 2) + '0';
-        carry = sum / 2;
-    }
+dotenv.config();
 
-    if (carry > 0) {
-        result += '1';
-    }
+const app = express();
 
-    std::reverse(result.begin(), result.end());
-    return result;
-}
+// Middleware
+app.use(bodyParser.json());
 
-std::string calculateChecksum(const std::vector<std::string>& data) {
-    std::string checksum = data[0];
+// Routes
+app.use('/api/auth', authRoutes);
+app.use('/api/blog', blogRoutes);
 
-    for (size_t i = 1; i < data.size(); i++) {
-        checksum = binaryAddition(checksum, data[i]);
-    }
+// Connect to MongoDB
+mongoose
+  .connect(process.env.MONGO_URI, {
+    useNewUrlParser:    true,
+    useUnifiedTopology: true,
+  })
+  .then(() => {
+    console.log('Connected to MongoDB');
+  })
+  .catch((err) => {
+    console.error('Error connecting to MongoDB', err);
+  });
 
-    if (checksum.length() > data[0].length()) {
-        std::string carry = checksum.substr(0, checksum.length() - data[0].length());
-        checksum = binaryAddition(checksum.substr(checksum.length() - data[0].length()), carry);
-    }
+// Start the server
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
 
-    for (char& bit : checksum) {
-        bit = (bit == '0') ? '1' : '0';
-    }
 
-    return checksum;
-}
 
-bool validateChecksum(const std::vector<std::string>& data, const std::string& checksum) {
-    std::vector<std::string> concatenatedData = {checksum};
-    concatenatedData.insert(concatenatedData.end(), data.begin(), data.end());
-
-    std::string finalChecksum = calculateChecksum(concatenatedData);
-    return finalChecksum == std::string(finalChecksum.length(), '0');
-}
-
-int main() {
-    int choice;
-    std::cout << "Enter 0 for checksum or 1 for CRC: ";
-    std::cin >> choice;
-
-    if (choice == 0) {
-        // Checksum implementation
-        int n;
-        std::cout << "Enter the number of binary blocks: ";
-        std::cin >> n;
-        std::cin.ignore();  // Consume newline
-        std::vector<std::string> data(n);
-        std::cout << "Enter the binary blocks:\n";
-        for (int i = 0; i < n; i++) {
-            std::getline(std::cin, data[i]);
-        }
-        std::string checksum = calculateChecksum(data);
-        std::cout << "Calculated Checksum: " << checksum << std::endl;
-
-        std::cout << "Validating checksum..." << std::endl;
-        bool isValid = validateChecksum(data, checksum);
-        std::cout << "Checksum valid: " << (isValid ? "true" : "false") << std::endl;
-    }
-    else if (choice == 1) {
-        // CRC implementation
-        printf("\nEnter data to be transmitted: ");  
-        scanf("%s",data);  
-        printf("\n Enter the Generating polynomial: ");  
-        scanf("%s",gen_poly);  
-        data_length = strlen(data);  
-        for(i = data_length; i < data_length+N-1; i++)  
-            data[i] = '0';  
-        printf("\nData padded with n-1 zeros : %s", data);  
-        crc();  
-        printf("\nCRC or Check value is : %s", check_value);  
-        for(i = data_length; i < data_length+N-1; i++)  
-            data[i] = check_value[i-data_length];  
-        printf("\nFinal data to be sent : %s", data); 
-        receiver(data);  
-    }
-    else {
-        std::cout << "Invalid choice." << std::endl;
-    }
-
-    return 0;
-}
-
----------------------------------------------------------------------------------------------------------------------------
-Program:
-server.py:
-# Server Code
-import socket
-import threading
-
-# Server Constants
-TCP_HOST = '127.0.0.1'
-TCP_PORT = 12345
-UDP_PORT = 12346
-
-clients = []
-
-# TCP Connection Handler
-def handle_tcp_client(conn, addr):
-    print(f"Connected to {addr}")
-    while True:
-        try:
-            message = conn.recv(1024).decode('utf-8')
-            if message:
-                print(f"Message from {addr}: {message}")
-                broadcast_tcp(message, conn)
-        except:
-            conn.close()
-            clients.remove(conn)
-            break
-
-# Broadcast TCP Messages to All Clients
-def broadcast_tcp(message, connection):
-    for client in clients:
-        if client != connection:
-            try:
-                client.send(message.encode('utf-8'))
-            except:
-                client.close()
-                clients.remove(client)
-
-# UDP Server for Real-time Updates
-def udp_server():
-    udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    udp_socket.bind((TCP_HOST, UDP_PORT))
-    print("UDP server running...")
-    while True:
-        data, addr = udp_socket.recvfrom(1024)
-        print(f"Real-time update from {addr}: {data.decode('utf-8')}")
-
-# Main Server Code
-def tcp_server():
-    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_socket.bind((TCP_HOST, TCP_PORT))
-    server_socket.listen()
-    print("TCP server running...")
-   
-    # Start UDP Server
-    udp_thread = threading.Thread(target=udp_server)
-    udp_thread.start()
-   
-    while True:
-        conn, addr = server_socket.accept()
-        clients.append(conn)
-        threading.Thread(target=handle_tcp_client, args=(conn, addr)).start()
-
-# Start the Server
-tcp_server()
-
-client.py:
-# Client Code
-import socket
-import threading
-
-# Server Constants
-SERVER_HOST = '127.0.0.1'
-TCP_PORT = 12345
-UDP_PORT = 12346
-
-# TCP Connection for Chat Messages
-def tcp_client():
-    tcp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    tcp_socket.connect((SERVER_HOST, TCP_PORT))
-    
-    def receive_messages():
-        while True:
-            message = tcp_socket.recv(1024).decode('utf-8')
-            print("Received:", message)
-    
-    threading.Thread(target=receive_messages).start()
-    
-    while True:
-        message = input("Enter message: ")
-        tcp_socket.send(message.encode('utf-8'))
-
-# UDP Connection for Real-time Updates
-def udp_client():
-    udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    while True:
-        update = input("Enter real-time update (typing): ")
-        udp_socket.sendto(update.encode('utf-8'), (SERVER_HOST, UDP_PORT))
-
-# Run Client
-threading.Thread(target=tcp_client).start()
-threading.Thread(target=udp_client).start()
-
---------------------------
-DISTANCE VECTOR ROUTING ALGORITHM
-#include <stdio.h>
-#include <limits.h>
-#define N 10 // Max number of nodes
-void distance_vector(int cost[N][N], int nodes) {
-    int distance[N][N], i, j, k;
-    for (i = 0; i < nodes; i++) {
-        for (j = 0; j < nodes; j++) {
-            distance[i][j] = cost[i][j];
-        }
-    }
- for (k = 0; k < nodes; k++) {
-        for (i = 0; i < nodes; i++) {
-            for (j = 0; j < nodes; j++) {
-                if (distance[i][j] > distance[i][k] + distance[k][j])
-                    distance[i][j] = distance[i][k] + distance[k][j];
-            }
-        }
-    }
-  printf("\nDistance Vector Routing Table:\n");
-    for (i = 0; i < nodes; i++) {
-        printf("Router %d: ", i);
-        for (j = 0; j < nodes; j++) {
-            if (distance[i][j] == INT_MAX)
-                printf("INF ");
-            else
-                printf("%d ", distance[i][j]);
-        }
-        printf("\n");
-    }
-}
-int main() {
-    int cost[N][N], nodes, i, j;
-   printf("Enter the number of nodes: ");
-    scanf("%d", &nodes);
-
-    printf("Enter the cost matrix (enter 9999 for infinity):\n");
-    for (i = 0; i < nodes; i++) {
-        for (j = 0; j < nodes; j++) {
-            scanf("%d", &cost[i][j]);
-            if (i == j)
-                cost[i][j] = 0;
-            if (cost[i][j] == 9999)
-                cost[i][j] = INT_MAX;
-        }
-    }
-distance_vector(cost, nodes);
- return 0;
+"scripts": {
+  "start": "node app.js",
+  "dev":   "nodemon app.js"
 }
 
 
-OUTPUT:
-
-5
-
-0 2 9999 1 9999
-2 0 3 9999 9999
-9999 3 0 1 5
-1 9999 1 0 9999
-9999 9999 5 9999 0
-
-Distance Vector Routing Table:
-Router 0: 0 2 3 1 8 
-Router 1: 2 0 3 3 8 
-Router 2: 3 3 0 1 5 
-Router 3: 1 3 1 0 6 
-Router 4: 8 8 5 6 0
 
 
 
-LINK STATE ROUTING ALGORITHM
-#include <stdio.h>
-#include <stdbool.h>
-#include <limits.h>
-#define N 10 // Max number of nodes
-int find_min_distance(int dist[], bool visited[], int nodes) {
-    int min = INT_MAX, min_index;
-      for (int v = 0; v < nodes; v++) {
-        if (visited[v] == false && dist[v] <= min) {
-            min = dist[v];
-            min_index = v;
-        }
-    }
-    
-    return min_index;
-}
-void link_state(int graph[N][N], int src, int nodes) {
-    int dist[N]; 
-    bool visited[N]; 
-   for (int i = 0; i < nodes; i++) {
-        dist[i] = INT_MAX;
-        visited[i] = false;
-    }
-   dist[src] = 0;
-   for (int count = 0; count < nodes - 1; count++) {
-        int u = find_min_distance(dist, visited, nodes);
-        visited[u] = true;
+Method: POST
 
-        for (int v = 0; v < nodes; v++) {
-            if (!visited[v] && graph[u][v] && dist[u] != INT_MAX && dist[u] + graph[u][v] < dist[v]) {
-                dist[v] = dist[u] + graph[u][v];
-            }
-        }
-    }
+URL: http://localhost:5000/api/auth/register
 
-    printf("\nLink State Routing Table for Node %d:\n", src);
-    for (int i = 0; i < nodes; i++) {
-        if (dist[i] == INT_MAX)
-            printf("Node %d: INF\n", i);
-        else
-            printf("Node %d: %d\n", i, dist[i]);
-    }
-}
-int main() {
-    int graph[N][N], nodes, i, j, src;
+Headers:
 
-    printf("Enter the number of nodes: ");
-    scanf("%d", &nodes);
+Content-Type: application/json
+Body (raw JSON):
 
-    printf("Enter the graph matrix (enter 9999 for infinity):\n");
-    for (i = 0; i < nodes; i++) {
-        for (j = 0; j < nodes; j++) {
-            scanf("%d", &graph[i][j]);
-            if (i == j)
-                graph[i][j] = 0;
-            if (graph[i][j] == 9999)
-                graph[i][j] = INT_MAX;
-        }
-    }
-
-    printf("Enter the source node: ");
-    scanf("%d", &src);
-
-    link_state(graph, src, nodes);
-
-    return 0;
+{
+  "username": "john",
+  "email":    "john@example.com",
+  "password": "password123"
 }
 
-OUTPUT:
+B. Log In
+Method: POST
 
-5
+URL: http://localhost:5000/api/auth/login
 
-0 2 9999 1 9999
-2 0 3 9999 9999
-9999 3 0 1 5
-1 9999 1 0 9999
-9999 9999 5 9999 0
+Headers:
 
-Link State Routing Table for Node 0:
-Node 0: 0
-Node 1: 2
-Node 2: 3
-Node 3: 1
-Node 4: 8
-----------------------------------------------------------------------------------------------
-# server.py
-import socket
-import threading
+Content-Type: application/json
+Body (raw JSON):
 
-# Server configuration
-HOST = '127.0.0.1'  # Localhost
-PORT = 12345        # Port number to listen on
+{
+  "email":    "john@example.com",
+  "password": "password123"
+}
 
-# List to hold all connected clients
-clients = []
 
-# Function to broadcast messages to all clients
-def broadcast(message, client_socket):
-    for client in clients:
-        if client != client_socket:
-            try:
-                client.send(message)
-            except:
-                # Remove disconnected clients
-                clients.remove(client)
 
-# Function to handle each client connection
-def handle_client(client_socket):
-    while True:
-        try:
-            # Receive message from the client
-            message = client_socket.recv(1024)
-            if not message:
-                break
-            # Broadcast message to other clients
-            broadcast(message, client_socket)
-        except:
-            # Remove and close the client connection if error occurs
-            clients.remove(client_socket)
-            client_socket.close()
-            break
+C. Create a New Blog Post
+Method: POST
 
-def start_server():
-    # Create a TCP socket
-    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_socket.bind((HOST, PORT))
-    server_socket.listen()
+URL: http://localhost:5000/api/blog/create
 
-    print(f"Server is listening on {HOST}:{PORT}...")
+Headers:
 
-    while True:
-        # Accept a new client connection
-        client_socket, client_address = server_socket.accept()
-        print(f"New connection from {client_address}")
-        clients.append(client_socket)
+Content-Type: application/json
+Authorization: Bearer your_jwt_token_here
+Body (raw JSON):
 
-        # Start a new thread to handle the client
-        client_thread = threading.Thread(target=handle_client, args=(client_socket,))
-        client_thread.start()
 
-if __name__ == "__main__":
-    start_server()
-# client.py
-import socket
-import threading
+{
+  "title":   "My First Blog Post",
+  "content": "This is the content of my first blog post."
+}
 
-# Server configuration
-HOST = '127.0.0.1'  # The server's IP address
-PORT = 12345        # The server's port number
 
-# Function to handle receiving messages from the server
-def receive_messages(client_socket):
-    while True:
-        try:
-            # Receive message from server
-            message = client_socket.recv(1024).decode('utf-8')
-            if message:
-                print(message)
-            else:
-                # If no message, server is likely disconnected
-                print("Server disconnected.")
-                break
-        except:
-            print("An error occurred!")
-            client_socket.close()
-            break
+D. Get All Blog Posts
+Method: GET
 
-def start_client():
-    # Create a TCP socket
-    client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    client_socket.connect((HOST, PORT))
+URL: http://localhost:5000/api/blog/
 
-    # Start a thread to listen for messages from the server
-    receive_thread = threading.Thread(target=receive_messages, args=(client_socket,))
-    receive_thread.start()
+Headers: None required
 
-    print("You can start sending messages:")
-    while True:
-        message = input()
-        if message.lower() == 'exit':
-            client_socket.close()
-            break
-        client_socket.send(message.encode('utf-8'))
+Expected Response:
 
-if __name__ == "__main__":
-    start_client()
-----------------------------------------------------------------------------------------
-# server.py
-import socket
-
-# Server configuration
-HOST = '127.0.0.1'  # Localhost (can be set to your server's IP)
-PORT = 12345        # Port to listen on
-
-# Set up a UDP socket
-server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-server_socket.bind((HOST, PORT))
-
-# List to track all connected clients (IP, port pairs)
-clients = set()
-
-print(f"Server is listening on {HOST}:{PORT}...")
-
-while True:
-    # Receive message from a client
-    message, client_address = server_socket.recvfrom(1024)
-    
-    # Add the new client to the clients list
-    if client_address not in clients:
-        clients.add(client_address)
-        print(f"New client connected: {client_address}")
-
-    # Broadcast the message to all other clients
-    for client in clients:
-        if client != client_address:
-            try:
-                server_socket.sendto(message, client)
-            except Exception as e:
-                print(f"Failed to send message to {client}: {e}")
---
-# client.py
-import socket
-import threading
-
-# Server configuration
-SERVER_HOST = '127.0.0.1'  # IP address of the server
-SERVER_PORT = 12345        # Port number of the server
-
-# Set up a UDP socket
-client_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-
-# Function to receive messages from the server
-def receive_messages():
-    while True:
-        try:
-            # Listen for messages from the server
-            message, _ = client_socket.recvfrom(1024)
-            print(message.decode('utf-8'))
-        except:
-            print("An error occurred!")
-            break
-
-# Start a thread to listen for incoming messages
-receive_thread = threading.Thread(target=receive_messages)
-receive_thread.start()
-
-print("You can start sending messages (type 'exit' to quit):")
-while True:
-    message = input()
-    if message.lower() == 'exit':
-        break
-    # Send message to the server
-    client_socket.sendto(message.encode('utf-8'), (SERVER_HOST, SERVER_PORT))
-
-# Close the client socket
-client_socket.close()
+json
+Copy code
+[
+  {
+    "_id":      "blog_id",
+    "title":    "My First Blog Post",
+    "content":  "This is the content of my first blog post.",
+    "author": {
+      "_id":     "user_id",
+      "username":"john"
+    },
+    "createdAt":"timestamp",
+    "updatedAt":"timestamp",
+    "__v":      0
+  }
+]
