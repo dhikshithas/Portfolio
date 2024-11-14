@@ -204,69 +204,42 @@ def tcp_server():
 tcp_server()
 
 client.py:
-
-# Server Code
+# Client Code
 import socket
 import threading
 
 # Server Constants
-TCP_HOST = '127.0.0.1'
+SERVER_HOST = '127.0.0.1'
 TCP_PORT = 12345
 UDP_PORT = 12346
 
-clients = []
-
-# TCP Connection Handler
-def handle_tcp_client(conn, addr):
-    print(f"Connected to {addr}")
+# TCP Connection for Chat Messages
+def tcp_client():
+    tcp_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    tcp_socket.connect((SERVER_HOST, TCP_PORT))
+    
+    def receive_messages():
+        while True:
+            message = tcp_socket.recv(1024).decode('utf-8')
+            print("Received:", message)
+    
+    threading.Thread(target=receive_messages).start()
+    
     while True:
-        try:
-            message = conn.recv(1024).decode('utf-8')
-            if message:
-                print(f"Message from {addr}: {message}")
-                broadcast_tcp(message, conn)
-        except:
-            conn.close()
-            clients.remove(conn)
-            break
+        message = input("Enter message: ")
+        tcp_socket.send(message.encode('utf-8'))
 
-# Broadcast TCP Messages to All Clients
-def broadcast_tcp(message, connection):
-    for client in clients:
-        if client != connection:
-            try:
-                client.send(message.encode('utf-8'))
-            except:
-                client.close()
-                clients.remove(client)
-
-# UDP Server for Real-time Updates
-def udp_server():
+# UDP Connection for Real-time Updates
+def udp_client():
     udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    udp_socket.bind((TCP_HOST, UDP_PORT))
-    print("UDP server running...")
     while True:
-        data, addr = udp_socket.recvfrom(1024)
-        print(f"Real-time update from {addr}: {data.decode('utf-8')}")
+        update = input("Enter real-time update (typing): ")
+        udp_socket.sendto(update.encode('utf-8'), (SERVER_HOST, UDP_PORT))
 
-# Main Server Code
-def tcp_server():
-    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_socket.bind((TCP_HOST, TCP_PORT))
-    server_socket.listen()
-    print("TCP server running...")
-   
-    # Start UDP Server
-    udp_thread = threading.Thread(target=udp_server)
-    udp_thread.start()
-   
-    while True:
-        conn, addr = server_socket.accept()
-        clients.append(conn)
-        threading.Thread(target=handle_tcp_client, args=(conn, addr)).start()
+# Run Client
+threading.Thread(target=tcp_client).start()
+threading.Thread(target=udp_client).start()
 
-# Start the Server
-tcp_server()
 --------------------------
 DISTANCE VECTOR ROUTING ALGORITHM
 #include <stdio.h>
